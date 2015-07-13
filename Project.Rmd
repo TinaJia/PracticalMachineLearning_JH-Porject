@@ -1,0 +1,159 @@
+---
+title: 'PML Project: Weight Lifting Activity Analysis'
+author: "Tina Yang"
+date: "Friday, July 10, 2015"
+output: html_document
+---
+# Introduction
+The objective of this report is to predict the type of the activity ("classe") based data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. 
+
+# Background 
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset). 
+
+The data source of this projec is:
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+Read more: <http://groupware.les.inf.puc-rio.br/har#sbia_paper_section#ixzz3fXJY9q4s>
+
+
+# Analysis Summary 
+
+* Cleaning the variable: There are 160 variables in the original dataset. However, quite many of them are missing values and irrelavent. I took three steps to clean the data
+    + first, remove variables with missing values
+    + second, remove "X", time, date, window, and user_name variables, which are not relavent for the prediction
+    + third, remove variables which has near zero variance, as these variables does not have prediction power
+* Divide the original "training" dataset into training (60\%) and testing (40\%) datasets. 
+* Train the three possible models using the training dataset and perform 10-folds cross validataion.
+* Perform out of sample test with the testing dataset and pick the best performed model
+* Finally, predict variable "classe" for the 20 observations in the orginal "testing" data    
+
+# Analysis and Results
+## Read the data
+```{r}
+dataURL1 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+dataURL2 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training_original <- read.csv(dataURL1, na.strings = c("NA","#DIV/0!",""))
+testing_original <- read.csv(dataURL2, na.strings = c("NA","#DIV/0!",""))
+```
+```{r}
+# show the dimension of the dataset
+dim(training_original)
+dim(testing_original)
+```
+## Clean the data
+In this section, I remove variables with missing values, with near zero variance, and variables which are not relavent for prediction.
+
+### Preprocessing data - 1. delete all the NA variables
+```{r}
+MissingVar_train <- ifelse(colSums(is.na(training_original)) > 0, T, F)
+sum(MissingVar_train)
+MissingVar_test <- ifelse(colSums(is.na(testing_original)) > 0, T, F)
+sum(MissingVar_test)
+# there are 100 variables with missing values
+
+## match training and testing set
+s <- data.frame(MissingVar_train, MissingVar_test)
+jointMissingVar <- ifelse(rowSums(s) == 0, F, T)
+newdataNames <- names(MissingVar_train[which(jointMissingVar == F)])
+newdataNames_testing <- newdataNames
+newdataNames_testing[60]="problem_id"
+
+training_new <- training_original[newdataNames]
+testing_new <- testing_original[newdataNames_testing]
+```
+### Preprocessing data - 2: several variables are no contribution to the predicion. 
+```{r}
+VarNames <- c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp","new_window", "num_window")
+training_new <- training_new[-which(names(training_new) %in% VarNames)]
+testing_new  <- testing_new[-which(names(testing_new) %in% VarNames)]
+```
+### Preprocessing data - 3: delete near zero covariance variables
+```{r}
+library(caret)
+nsv_train <- nearZeroVar(training_new, saveMetric = T)
+nsv_test <- nearZeroVar(training_new, saveMetric = T)
+```
+
+```{r, echo=FALSE}
+## check if there is still NA variables, we find that there is no missing varaibles anymore
+print(paste("there is", sum(is.na(training_new)), "missing variable in the training set"))
+print(paste("there is", sum(is.na(testing_new)), "missing variable in the testing set"))
+## check if there is near zero variance variable
+print(paste("there is", sum(nsv_train$zeroVar), "near zero variance variable in the training set"))
+print(paste("there is", sum(nsv_test$zeroVar), "near zero variance variable in the testing set"))
+```
+
+There are 53 variables are selcted in the end. The following graph shows a distribution of variable "classe".
+```{r}
+plot(training_new$classe, main = "Histogram of classe")
+```
+
+## Create the training and testing set
+In this section, I seperate the original "training" data into training (60\%) and testing (40\%) datasets. I will train the 
+
+```{r}
+# creating training and testing set in the original training set
+library(rpart)
+set.seed(12233)
+inTrain  <- createDataPartition(y=training_new$classe, p=0.6, list=F)
+training <- training_new[inTrain,]
+testing  <- training_new[-inTrain,]
+rbind(dim(training_new), dim(training), dim(testing))
+```
+## Models training
+To train the model with the training set, I perform a 10 - folds cross validation. First set a genearl "train_control", this variable can be used in all the models.
+```{r}
+# choose 10 folds cross validation
+# define training control
+train_control <- trainControl(method="cv", number=10)
+```
+### Model 1 - random forest
+A random forest model is first performed with the 10 - folds cross validataion. I then use the testing dataset to test the out of sample error
+```{r, message = FALSE, cache=TRUE}
+# train the model 
+set.seed(12233)
+Mod_RF <- train(classe~., data = training, trControl=train_control, method = 'rf')
+Pre_RF <- predict(Mod_RF, testing)
+```
+```{r}
+# out of sample error
+table(Pre_RF, testing$classe)
+confusionMatrix(Pre_RF, testing$classe)
+```
+
+### Model 2 - classification Tree
+Second, I choose a classification tree with 10 - folds cross validation. The decision tree is shown and the out of sample predcition error is calculated
+
+```{r, message = FALSE, cache=TRUE}
+set.seed(12233)
+Mod_CT <- train(classe~., method = "rpart", data= training, trControl=train_control)
+Pre_CT <- predict(Mod_CT, testing)
+library(rattle)
+```
+```{r}
+# out of sample error
+fancyRpartPlot(Mod_CT$finalModel)
+table(Pre_CT, testing$classe)
+confusionMatrix(Pre_CT, testing$classe)
+```
+
+### Model 3- Boosting
+Last, I try the boosting method with 10 - folds cross validataion. The out of sample prediction error is calculated with the testing dataset 
+
+```{r, message = FALSE, cache=TRUE}
+set.seed(12233)
+Mod_Bo <- train(classe~., data = training, trControl=train_control, method = 'gbm')
+Pre_Bo <- predict(Mod_Bo, testing)
+```
+```{r}
+# out of sample error
+table(Pre_Bo, testing$classe)
+confusionMatrix(Pre_Bo, testing$classe)
+```
+
+# Predicion 
+Based on the model training, random forest model outperforms the other two models. The accuracy is Therefore, it is chosen to predict the "classe" type for the 20 observations in the original testing data. 
+
+```{r}
+predict(Mod_RF, testing_new)
+```
