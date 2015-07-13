@@ -117,7 +117,6 @@ Pre_RF <- predict(Mod_RF, testing)
 ```
 ```{r}
 # out of sample error
-table(Pre_RF, testing$classe)
 confusionMatrix(Pre_RF, testing$classe)
 ```
 
@@ -128,32 +127,33 @@ Second, I choose a classification tree with 10 - folds cross validation. The dec
 set.seed(12233)
 Mod_CT <- train(classe~., method = "rpart", data= training, trControl=train_control)
 Pre_CT <- predict(Mod_CT, testing)
-library(rattle)
+
 ```
-```{r}
+```{r, message = FALSE}
 # out of sample error
+library(rattle)
 fancyRpartPlot(Mod_CT$finalModel)
-table(Pre_CT, testing$classe)
 confusionMatrix(Pre_CT, testing$classe)
 ```
 
 ### Model 3- Boosting
 Last, I try the boosting method with 10 - folds cross validataion. The out of sample prediction error is calculated with the testing dataset 
 
-```{r, message = FALSE, cache=TRUE}
+```{r, message = FALSE, cache=TRUE, results='hide'}
 set.seed(12233)
 Mod_Bo <- train(classe~., data = training, trControl=train_control, method = 'gbm')
 Pre_Bo <- predict(Mod_Bo, testing)
 ```
+
 ```{r}
 # out of sample error
-table(Pre_Bo, testing$classe)
 confusionMatrix(Pre_Bo, testing$classe)
 ```
 
 # Predicion 
-Based on the model training, random forest model outperforms the other two models. The accuracy is Therefore, it is chosen to predict the "classe" type for the 20 observations in the original testing data. 
+Based on the model training, both random forest model and boosting model has very high prediction power. The out of sample accuracy is 0.9913 for the random forest and 0.9629 for boosting method, whereas, randome forest is more accurate. Therefore, I use both method to predict the "classe" type for the 20 observations in the original testing data. As seen, they provide the same forecasts for the 20 testing observations
 
-```{r}
+```{r, message = FALSE}
 predict(Mod_RF, testing_new)
+predict(Mod_Bo, testing_new)
 ```
